@@ -13,6 +13,7 @@ import {
   TransactionCategory,
   TransactionType,
 } from '../types/finance';
+import { exportLedgerToCSV } from '../services/storageService';
 
 interface SmartLedgerViewProps {
   currentDay: number;
@@ -89,25 +90,7 @@ export const SmartLedgerView: React.FC<SmartLedgerViewProps> = ({
     .sort((a, b) => b.day - a.day);
 
   const handleExportCSV = () => {
-    const headers = ['Day', 'Title', 'Category', 'Type', 'Priority', 'Amount_INR'];
-    const rows = filteredTransactions.map(t => [
-      `Day ${t.day}`,
-      `"${t.title.replace(/"/g, '""')}"`,
-      `"${t.category}"`,
-      t.type,
-      t.isEssential ? 'Essential' : 'Discretionary',
-      t.amount,
-    ]);
-    const csvContent =
-      'data:text/csv;charset=utf-8,' +
-      [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `rupeerun_30day_ledger_day${currentDay}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    exportLedgerToCSV(filteredTransactions, currentDay);
   };
 
   return (

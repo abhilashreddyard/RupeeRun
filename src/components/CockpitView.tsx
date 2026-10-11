@@ -25,6 +25,7 @@ import {
 import { PERSONA_PRESETS, WHAT_IF_TEMPLATES } from '../data/presets';
 import { TrajectoryChart } from './TrajectoryChart';
 import { SavingsGoalProgressRing } from './SavingsGoalProgressRing';
+import { FinancialCopilotWidget } from './FinancialCopilotWidget';
 
 interface CockpitViewProps {
   currentDay: number;
@@ -45,6 +46,7 @@ interface CockpitViewProps {
   onQuickAddExpense: (tx: Omit<Transaction, 'id'>) => void;
   onToggleSubscription: (id: string) => void;
   onUpdateSavingsGoal: (id: string, deltaSaved: number) => void;
+  onUpdateEmergencyBuffer: (delta: number) => void;
 }
 
 export const CockpitView: React.FC<CockpitViewProps> = ({
@@ -66,6 +68,7 @@ export const CockpitView: React.FC<CockpitViewProps> = ({
   onQuickAddExpense,
   onToggleSubscription,
   onUpdateSavingsGoal,
+  onUpdateEmergencyBuffer,
 }) => {
   const [quickTitle, setQuickTitle] = useState('');
   const [quickAmount, setQuickAmount] = useState('');
@@ -631,6 +634,15 @@ export const CockpitView: React.FC<CockpitViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Behavioral Fintech Copilot & 30-Day Survival Challenges */}
+      <FinancialCopilotWidget
+        currentDay={currentDay}
+        metrics={metrics}
+        subscriptions={subscriptions}
+        onPauseLowestValueSub={onToggleSubscription}
+        onLockEmergencyShield={() => onUpdateEmergencyBuffer(200)}
+      />
     </div>
   );
 };
