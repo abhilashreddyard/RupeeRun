@@ -6,6 +6,7 @@ import {
   UnexpectedEvent,
 } from '../types/finance';
 import { STORAGE_KEY } from '../constants/config';
+import { isValidPersistedSchema, sanitizeTextInput } from '../utils/security';
 
 export interface PersistedFinancialState {
   activePresetId: string;
@@ -23,9 +24,9 @@ export function loadPersistedState(): PersistedFinancialState | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as PersistedFinancialState;
-    if (parsed && typeof parsed.currentDay === 'number') {
-      return parsed;
+    const parsed: unknown = JSON.parse(raw);
+    if (isValidPersistedSchema(parsed)) {
+      return parsed as PersistedFinancialState;
     }
     return null;
   } catch {
@@ -45,8 +46,8 @@ export function exportLedgerToCSV(transactions: Transaction[], currentDay: numbe
   const headers = ['Day', 'Title', 'Category', 'Type', 'Priority', 'Amount_INR'];
   const rows = transactions.map(t => [
     `Day ${t.day}`,
-    `"${t.title.replace(/"/g, '""')}"`,
-    `"${t.category}"`,
+    `"${sanitizeTextInput(t.title).replace(/"/g, '""')}"`,
+    `"${sanitizeTextInput(t.category)}"`,
     t.type,
     t.isEssential ? 'Essential' : 'Discretionary',
     t.amount,

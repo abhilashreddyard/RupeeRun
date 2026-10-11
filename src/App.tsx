@@ -13,6 +13,7 @@ import {
 } from './context/FinancialContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ShockEventModal } from './components/ShockEventModal';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 // Lazy-loaded view modules for optimal bundle splitting & performance
 const CockpitView = lazy(() =>
@@ -88,21 +89,8 @@ function RupeeRunWorkspace() {
     return () => clearTimeout(timer);
   }, [toastMessage, triggerToast]);
 
-  // Keyboard shortcuts (Alt + 1..5) for accessible fast view switching
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.altKey && ['1', '2', '3', '4', '5'].includes(e.key)) {
-        e.preventDefault();
-        const idx = Number(e.key) - 1;
-        const target = NAVIGATION_TABS[idx];
-        if (target) {
-          setActiveTab(target.id);
-        }
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setActiveTab]);
+  // Accessible keyboard shortcuts (Alt + 1..5 for views, Escape to close modal)
+  useKeyboardShortcuts(setActiveTab, () => setActiveShockModalEvent(null));
 
   return (
     <div className="min-h-screen flex flex-col bg-[#090D16] text-slate-100">

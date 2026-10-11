@@ -1,11 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Search,
   Plus,
   Trash2,
   Download,
-  Filter,
-  ArrowUpDown,
 } from 'lucide-react';
 import {
   FinancialMetrics,
@@ -14,6 +12,12 @@ import {
   TransactionType,
 } from '../types/finance';
 import { exportLedgerToCSV } from '../services/storageService';
+import {
+  sanitizeTextInput,
+  sanitizeCurrencyAmount,
+  sanitizeCycleDay,
+} from '../utils/security';
+import { useDebounce } from '../hooks/useDebounce';
 
 interface SmartLedgerViewProps {
   currentDay: number;
@@ -34,7 +38,7 @@ const CATEGORIES: TransactionCategory[] = [
   'Extra Income',
 ];
 
-export const SmartLedgerView: React.FC<SmartLedgerViewProps> = ({
+export const SmartLedgerView: React.FC<SmartLedgerViewProps> = React.memo(({
   currentDay,
   metrics,
   transactions,
@@ -42,6 +46,7 @@ export const SmartLedgerView: React.FC<SmartLedgerViewProps> = ({
   onDeleteTransaction,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 150);
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'ESSENTIAL' | 'DISCRETIONARY' | 'INCOME'>('ALL');
 
@@ -61,33 +66,38 @@ export const SmartLedgerView: React.FC<SmartLedgerViewProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || numAmount <= 0) return;
+    const cleanTitle = sanitizeTextInput(title, 90);
+    const cleanAmount = sanitizeCurrencyAmount(numAmount, 0, 50000);
+    if (!cleanTitle || cleanAmount <= 0) return;
+
     onAddTransaction({
-      title: title.trim(),
-      amount: numAmount,
+      title: cleanTitle,
+      amount: cleanAmount,
       category: type === 'income' ? 'Extra Income' : category,
       type,
       isEssential: type === 'income' ? true : isEssential,
-      day: Math.max(1, Math.min(30, Number(day) || currentDay)),
+      day: sanitizeCycleDay(day || currentDay),
     });
     setTitle('');
     setAmount('');
   };
 
-  const filteredTransactions = transactions
-    .filter(tx => {
-      const matchesSearch =
-        tx.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        tx.category.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCat = categoryFilter === 'ALL' || tx.category === categoryFilter;
-      const matchesType =
-        typeFilter === 'ALL' ||
-        (typeFilter === 'INCOME' && tx.type === 'income') ||
-        (typeFilter === 'ESSENTIAL' && tx.type === 'expense' && tx.isEssential) ||
-        (typeFilter === 'DISCRETIONARY' && tx.type === 'expense' && !tx.isEssential);
-      return matchesSearch && matchesCat && matchesType;
-    })
-    .sort((a, b) => b.day - a.day);
+  const filteredTransactions = useMemo(() => {
+    return transactions
+      .filter(tx => {
+        const matchesSearch =
+          tx.title.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+          tx.category.toLowerCase().includes(debouncedSearch.toLowerCase());
+        const matchesCat = categoryFilter === 'ALL' || tx.category === categoryFilter;
+        const matchesType =
+          typeFilter === 'ALL' ||
+          (typeFilter === 'INCOME' && tx.type === 'income') ||
+          (typeFilter === 'ESSENTIAL' && tx.type === 'expense' && tx.isEssential) ||
+          (typeFilter === 'DISCRETIONARY' && tx.type === 'expense' && !tx.isEssential);
+        return matchesSearch && matchesCat && matchesType;
+      })
+      .sort((a, b) => b.day - a.day);
+  }, [transactions, debouncedSearch, categoryFilter, typeFilter]);
 
   const handleExportCSV = () => {
     exportLedgerToCSV(filteredTransactions, currentDay);
@@ -111,7 +121,9 @@ export const SmartLedgerView: React.FC<SmartLedgerViewProps> = ({
 
         <div className="flex items-center gap-3 shrink-0">
           <button
+            type="button"
             onClick={handleExportCSV}
+            aria-label="Download filtered transactions as CSV"
             className="px-4 py-2 text-xs font-medium text-slate-200 bg-[#090D16] border border-slate-700 hover:border-slate-500 rounded-lg transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
@@ -127,12 +139,13 @@ export const SmartLedgerView: React.FC<SmartLedgerViewProps> = ({
             Log Expense or Extra Income
           </h2>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" aria-label="Log new transaction form">
             {/* Expense vs Income Switch */}
-            <div className="grid grid-cols-2 gap-1 p-1 bg-[#090D16] rounded-lg border border-slate-800">
+            <div className="grid grid-cols-2 gap-1 p-1 bg-[#090D16] rounded-lg border border-slate-800" role="group" aria-label="Transaction Type">
               <button
                 type="button"
                 onClick={() => setType('expense')}
+                aria-pressed={type === 'expense'}
                 className={`py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
                   type === 'expense'
                     ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
@@ -144,6 +157,7 @@ export const SmartLedgerView: React.FC<SmartLedgerViewProps> = ({
               <button
                 type="button"
                 onClick={() => setType('income')}
+                aria-pressed={type === 'income'}
                 className={`py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
                   type === 'income'
                     ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
@@ -155,12 +169,14 @@ export const SmartLedgerView: React.FC<SmartLedgerViewProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
+              <label htmlFor="ledger-tx-title" className="block text-xs font-medium text-slate-300 mb-1">
                 Description
               </label>
               <input
+                id="ledger-tx-title"
                 type="text"
                 required
+                maxLength={90}
                 placeholder={
                   type === 'expense'
                     ? 'e.g., Campus Canteen Thali & Chai'
@@ -174,13 +190,15 @@ export const SmartLedgerView: React.FC<SmartLedgerViewProps> = ({
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label htmlFor="ledger-tx-amount" className="block text-xs font-medium text-slate-300 mb-1">
                   Amount (₹)
                 </label>
                 <input
+                  id="ledger-tx-amount"
                   type="number"
                   required
                   min={1}
+                  max={50000}
                   placeholder="250"
                   value={amount}
                   onChange={e => setAmount(e.target.value)}
@@ -188,10 +206,11 @@ export const SmartLedgerView: React.FC<SmartLedgerViewProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label htmlFor="ledger-tx-day" className="block text-xs font-medium text-slate-300 mb-1">
                   Day of Cycle (1–30)
                 </label>
                 <input
+                  id="ledger-tx-day"
                   type="number"
                   min={1}
                   max={30}
@@ -205,10 +224,11 @@ export const SmartLedgerView: React.FC<SmartLedgerViewProps> = ({
             {type === 'expense' && (
               <>
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
+                  <label htmlFor="ledger-tx-category" className="block text-xs font-medium text-slate-300 mb-1">
                     Category
                   </label>
                   <select
+                    id="ledger-tx-category"
                     value={category}
                     onChange={e => setCategory(e.target.value as TransactionCategory)}
                     className="w-full px-3.5 py-2 bg-[#090D16] border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-sky-400"
@@ -279,8 +299,12 @@ export const SmartLedgerView: React.FC<SmartLedgerViewProps> = ({
           {/* Filter Controls */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
             <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true" />
+              <label htmlFor="ledger-search-input" className="sr-only">
+                Search transactions by title or category
+              </label>
               <input
+                id="ledger-search-input"
                 type="text"
                 placeholder="Search transactions by title or category..."
                 value={searchQuery}
@@ -290,11 +314,13 @@ export const SmartLedgerView: React.FC<SmartLedgerViewProps> = ({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1 p-1 bg-[#090D16] border border-slate-800 rounded-lg">
+              <div className="flex items-center gap-1 p-1 bg-[#090D16] border border-slate-800 rounded-lg" role="group" aria-label="Filter by priority">
                 {(['ALL', 'ESSENTIAL', 'DISCRETIONARY', 'INCOME'] as const).map(f => (
                   <button
                     key={f}
+                    type="button"
                     onClick={() => setTypeFilter(f)}
+                    aria-pressed={typeFilter === f}
                     className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
                       typeFilter === f
                         ? 'bg-slate-800 text-white'
@@ -312,7 +338,11 @@ export const SmartLedgerView: React.FC<SmartLedgerViewProps> = ({
                 ))}
               </div>
 
+              <label htmlFor="ledger-category-filter" className="sr-only">
+                Filter by category
+              </label>
               <select
+                id="ledger-category-filter"
                 value={categoryFilter}
                 onChange={e => setCategoryFilter(e.target.value)}
                 className="px-3 py-1.5 bg-[#090D16] border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-sky-400"
@@ -355,10 +385,11 @@ export const SmartLedgerView: React.FC<SmartLedgerViewProps> = ({
               <div className="text-sm font-medium text-slate-300">
                 No matching transactions in ledger
               </div>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-400">
                 Clear your search filters or log a new transaction on the left.
               </p>
               <button
+                type="button"
                 onClick={() => {
                   setSearchQuery('');
                   setCategoryFilter('ALL');
@@ -371,13 +402,13 @@ export const SmartLedgerView: React.FC<SmartLedgerViewProps> = ({
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full text-left border-collapse" aria-label="30-Day Transaction Audit Table">
                 <thead>
                   <tr className="border-b border-slate-800 text-[11px] font-mono text-slate-400">
-                    <th className="py-2.5 pr-3">DAY</th>
-                    <th className="py-2.5 px-3">TRANSACTION & METADATA</th>
-                    <th className="py-2.5 px-3 text-right">AMOUNT</th>
-                    <th className="py-2.5 pl-3 text-right">ACTION</th>
+                    <th scope="col" className="py-2.5 pr-3">DAY</th>
+                    <th scope="col" className="py-2.5 px-3">TRANSACTION & METADATA</th>
+                    <th scope="col" className="py-2.5 px-3 text-right">AMOUNT</th>
+                    <th scope="col" className="py-2.5 pl-3 text-right">ACTION</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/70 text-sm">
@@ -390,7 +421,7 @@ export const SmartLedgerView: React.FC<SmartLedgerViewProps> = ({
                         <div className="font-medium text-slate-100">{tx.title}</div>
                         <div className="text-xs text-slate-400 flex flex-wrap items-center gap-1.5 mt-0.5">
                           <span>{tx.category}</span>
-                          <span>·</span>
+                          <span aria-hidden="true">·</span>
                           <span>
                             {tx.type === 'income'
                               ? 'Inflow'
@@ -400,8 +431,8 @@ export const SmartLedgerView: React.FC<SmartLedgerViewProps> = ({
                           </span>
                           {tx.note && (
                             <>
-                              <span>·</span>
-                              <span className="text-slate-500">{tx.note}</span>
+                              <span aria-hidden="true">·</span>
+                              <span className="text-slate-400">{tx.note}</span>
                             </>
                           )}
                         </div>
@@ -415,8 +446,9 @@ export const SmartLedgerView: React.FC<SmartLedgerViewProps> = ({
                       </td>
                       <td className="py-3 pl-3 text-right whitespace-nowrap">
                         <button
+                          type="button"
                           onClick={() => onDeleteTransaction(tx.id)}
-                          className="p-1.5 text-slate-500 hover:text-rose-400 rounded-md hover:bg-slate-800 transition-colors cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-rose-400 rounded-md hover:bg-slate-800 transition-colors cursor-pointer"
                           title="Delete entry"
                           aria-label={`Delete ${tx.title}`}
                         >
@@ -433,4 +465,5 @@ export const SmartLedgerView: React.FC<SmartLedgerViewProps> = ({
       </div>
     </div>
   );
-};
+});
+SmartLedgerView.displayName = 'SmartLedgerView';
